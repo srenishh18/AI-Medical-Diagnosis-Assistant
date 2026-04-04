@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+*.pkl
+backend/models/*.pkl
+temp_audio/*
+
+# Node / Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.eslintcache
+package-lock.json
+
+# IDEs
+.vscode/
+
+# OS files
+Thumbs.db
+db.sqlite3
+.DS_Store
+
+# User generated
+*.log
