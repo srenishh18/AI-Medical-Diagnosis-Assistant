@@ -1,87 +1,48 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import '../index.css';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const fetchWithRetry = async (url, options, retries = 3) => {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      return await fetch(url, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        await sleep(500 * attempt);
+      }
+    }
+  }
+
+  throw lastError;
+};
+
 const Diagnose = () => {
-  const [isRecording, setIsRecording] = useState(false);
-  const [audioURL, setAudioURL] = useState('');
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState(null);
 
-  const mediaRecorderRef = useRef(null);
-  const audioChunksRef = useRef([]);
   const aiAudioPlayerRef = useRef(null);
-
-  useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ audio: true }).catch(err => {
-      console.error("Microphone access denied:", err);
-    });
-  }, []);
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      audioChunksRef.current = [];
-
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) audioChunksRef.current.push(event.data);
-      };
-
-      mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        setAudioURL(URL.createObjectURL(audioBlob));
-        await sendAudioToBackend(audioBlob);
-      };
-
-      mediaRecorderRef.current.start();
-      setIsRecording(true);
-      setResult(null);
-    } catch (error) {
-      alert("Microphone permission error.");
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-    }
-  };
-
-  const sendAudioToBackend = async (audioBlob) => {
-    setIsProcessing(true);
-    const formData = new FormData();
-    formData.append("audio", audioBlob, "recording.webm");
-
-    try {
-      const response = await fetch("http://localhost:8000/api/diagnose/audio", {
-        method: "POST",
-        body: formData,
-      });
-      handleResponse(response);
-    } catch (error) {
-      alert("Failed to reach server.");
-      setIsProcessing(false);
-    }
-  };
 
   const sendTextToBackend = async () => {
     if (!inputText.trim()) return;
     setIsProcessing(true);
     setResult(null);
-    setAudioURL('');
 
     try {
-      const response = await fetch("http://localhost:8000/api/diagnose/text", {
+      const response = await fetchWithRetry(`${API_BASE_URL}/api/diagnose/text`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: inputText }),
       });
-      handleResponse(response);
+      await handleResponse(response);
     } catch (error) {
-      alert("Failed to reach server.");
+      alert("Failed to reach server. Make sure the backend is running on port 8000 and try again.");
       setIsProcessing(false);
     }
   };
@@ -89,11 +50,17 @@ const Diagnose = () => {
   const handleResponse = async (response) => {
     try {
       const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || data.detail || `Request failed (${response.status})`);
+      }
       if (data.error) throw new Error(data.error);
       
       setResult(data);
+      if (data.transcription) {
+        setInputText(data.transcription);
+      }
       if (aiAudioPlayerRef.current && data.audio_url) {
-        aiAudioPlayerRef.current.src = `http://localhost:8000${data.audio_url}`;
+        aiAudioPlayerRef.current.src = `${API_BASE_URL}${data.audio_url}`;
         aiAudioPlayerRef.current.play().catch(e => console.warn(e));
       }
     } catch (e) {
@@ -107,24 +74,10 @@ const Diagnose = () => {
     <div className="page-container diagnose-page">
       <header className="page-header text-center slide-down">
         <h2>Symptom Diagnosis</h2>
-        <p>Speak or type your symptoms to get ML-powered insights.</p>
+        <p>Type your symptoms to get ML-powered insights.</p>
       </header>
 
       <div className="input-cards-container stagger-in">
-        <div className="input-card glass-panel">
-          <h3>Voice Input</h3>
-          <div className={`mic-container ${isRecording ? 'pulse' : ''}`}>
-            <button 
-              className={`mic-button ${isRecording ? 'recording' : ''}`}
-              onClick={isRecording ? stopRecording : startRecording}
-              disabled={isProcessing}
-            >
-              {isRecording ? '⏹' : '🎤'}
-            </button>
-          </div>
-          <p className="status-text">{isRecording ? "Listening..." : "Tap to speak"}</p>
-        </div>
-
         <div className="input-card glass-panel">
           <h3>Text Input</h3>
           <textarea 
@@ -185,7 +138,7 @@ const Diagnose = () => {
             {result.audio_url && (
               <div className="audio-player-wrapper">
                 <p>Listen to Diagnosis</p>
-                <audio ref={aiAudioPlayerRef} controls src={`http://localhost:8000${result.audio_url}`} className="styled-audio"></audio>
+                <audio ref={aiAudioPlayerRef} controls src={`${API_BASE_URL}${result.audio_url}`} className="styled-audio"></audio>
               </div>
             )}
             
