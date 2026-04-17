@@ -91,10 +91,4 @@ _The frontend will run at [http://localhost:5173](http://localhost:5173)_
 
 This application is an AI-powered diagnostic tool for educational and informational purposes. It is **not** a substitute for professional medical advice, diagnosis, or treatment. Always consult a healthcare professional for serious medical issues.
 
-# backend
 
-cd backend; ..\.venv\Scripts\python.exe main.py
-
-# frontend
-
-cd frontend; npm run dev
